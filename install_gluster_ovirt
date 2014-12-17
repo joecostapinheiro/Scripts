@@ -1,0 +1,105 @@
+iptables -F
+
+chkconfig iptables off
+
+ 
+
+yum localinstall -y http://resources.ovirt.org/pub/yum-repo/ovirt-release35.rpm 
+
+yum install -y screen glusterfs-server nfs-utils netstat vdsm-gluster ctdb
+
+ 
+
+ 
+
+mkdir /gluster && ssm create -p gluster --fstype xfs -n gluster /gluster /dev/sdb && mkdir -p /gluster/{engine,data,meta}/brick && mkdir /mnt/lock
+
+ 
+
+ 
+
+service glusterd start && chkconfig glusterd on && blkid /dev/gluster/gluster
+
+ 
+
+UUID=$YOUR_UUID /gluster xfs defaults 0 0
+
+ 
+
+gluster volume create engine replica 2 stg01:/gluster/engine/brick stg02:/gluster/engine/brick
+
+gluster volume create data replica 2 stg01:/gluster/data/brick stg02:/gluster/data/brick
+
+gluster volume create meta replica 2 stg01:/gluster/meta/brick stg02:/gluster/meta/brick
+
+ 
+
+ 
+
+gluster volume start meta
+
+mkdir -p /mnt/lock
+
+mount -t glusterfs localhost:/meta /mnt/lock
+
+ 
+
+yum install ctdb -y
+
+ 
+
+# vim /mnt/lock/ctdb
+
+CTDB_PUBLIC_ADDRESSES=/mnt/lock/public_addresses
+
+CTDB_NODES=/etc/ctdb/nodes
+
+# Only when using Samba. Unnecessary for NFS.
+
+CTDB_MANAGES_SAMBA=no
+
+# some tunables
+
+CTDB_SET_DeterministicIPs=1
+
+CTDB_SET_RecoveryBanPeriod=120
+
+CTDB_SET_KeepaliveInterval=5
+
+CTDB_SET_KeepaliveLimit=5
+
+CTDB_SET_MonitorInterval=15
+
+CTDB_RECOVERY_LOCK=/mnt/lock/reclock
+
+ 
+
+# mv /etc/sysconfig/ctdb /etc/sysconfig/ctdb_old && ln -s /mnt/lock/ctdb /etc/sysconfig/ctdb
+
+# mv /etc/ctdb/nodes /etc/ctdb/nodes_old && mv /etc/ctdb/public_addresses /etc/ctdb/public_addresses_old
+
+# ln -s /mnt/lock/nodes /etc/ctdb/nodes && ln -s /mnt/lock/public_addresses /etc/ctdb/public_addresses 
+
+# service ctdb start
+
+ 
+
+[root@stg01 ~]# cat /etc/rc.local 
+
+#!/bin/sh
+
+#
+
+# This script will be executed *after* all the other init scripts.
+
+# You can put your own initialization stuff in here if you don't
+
+# want to do the full Sys V style init stuff.
+
+touch /var/lock/subsys/local
+
+ 
+
+mount -t glusterfs localhost:/meta /mnt/lock
+
+/sbin/service ctdb start
